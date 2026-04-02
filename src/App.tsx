@@ -65,11 +65,12 @@ import {
 
 function App() {
   const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const hasInvitedRoom = useMemo(() => Boolean(searchParams.get("room")), [searchParams]);
   const initialLanguage = useMemo(
     () => detectLanguage(searchParams.get("lang") || navigator.language),
     [searchParams]
   );
-  const [role, setRole] = useState<SessionRole>(() => (searchParams.get("room") ? "peer" : "host"));
+  const [role, setRole] = useState<SessionRole>(() => (hasInvitedRoom ? "peer" : "host"));
   const [displayName, setDisplayName] = useState(() => randomName());
   const [roomId, setRoomId] = useState(() => searchParams.get("room") || generateRoomId());
   const [language, setLanguage] = useState<AppLanguage>(initialLanguage);
@@ -111,6 +112,12 @@ function App() {
   useEffect(() => {
     roleRef.current = role;
   }, [role]);
+
+  useEffect(() => {
+    if (hasInvitedRoom && role !== "peer") {
+      setRole("peer");
+    }
+  }, [hasInvitedRoom, role]);
 
   useEffect(() => {
     roomIdRef.current = roomId;
@@ -1179,7 +1186,8 @@ function App() {
                     key={item}
                     type="button"
                     onClick={() => setRole(item)}
-                    className={`rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                    disabled={hasInvitedRoom && item === "host"}
+                    className={`rounded-xl px-3 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45 ${
                       role === item
                         ? "bg-white text-slate-900 shadow-sm"
                         : "text-slate-500 hover:text-slate-700"

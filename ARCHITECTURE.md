@@ -28,6 +28,7 @@ AulaFlux is a single-page React application that renders a Fabric.js canvas and 
 - The host creates a peer with the room ID.
 - Peers create anonymous peer IDs and connect to the host room ID.
 - Signaling uses the default PeerJS cloud broker only.
+- If the URL already contains a `room` parameter, the setup flow is forced into peer mode so a shared board cannot spawn a second teacher session.
 
 ## Board Objects
 

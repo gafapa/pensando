@@ -85,6 +85,7 @@ The Vite base path is configured as `/pensando/` for deployment under that subpa
 - The app uses PeerJS cloud signaling only.
 - There is no local PeerServer configuration in the UI.
 - Invite links only carry `room` and `lang`.
+- An invited board can only be opened as a peer, so each board keeps a single teacher/host session.
 
 ## Project Structure
 
