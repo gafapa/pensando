@@ -1,6 +1,6 @@
 # AulaFlux
 
-AulaFlux is a local-first collaborative whiteboard for classrooms, workshops, and group activities. It is designed to start quickly, run without an application backend, and support real-time sessions between a host and multiple peers over a local network or the internet.
+AulaFlux is a local-first collaborative whiteboard for classrooms, workshops, and group activities. It runs as a single-page React app and synchronizes sessions through PeerJS cloud signaling.
 
 ## Features
 
@@ -12,7 +12,7 @@ AulaFlux is a local-first collaborative whiteboard for classrooms, workshops, an
 - Drag and drop image upload for files under 2 MB
 - Remote cursors with participant names
 - Session export and import through Fabric JSON snapshots
-- Optional local PeerServer support for isolated classroom networks
+- Built-in UI localization for Spanish, Galician, English, French, German, Portuguese, Catalan, and Basque
 
 ## Stack
 
@@ -22,7 +22,6 @@ AulaFlux is a local-first collaborative whiteboard for classrooms, workshops, an
 - Tailwind CSS 4
 - Fabric.js 7
 - PeerJS
-- `peer` for the optional local signaling server
 - `qrcode` for invite QR generation
 - `motion`
 - `lucide-react`
@@ -45,6 +44,21 @@ Supported message types:
 - `UPDATE_META`
 - `CURSOR`
 
+## Localization
+
+The app includes these interface languages:
+
+- Spanish (`es`)
+- Galician (`gl`)
+- English (`en`)
+- French (`fr`)
+- German (`de`)
+- Portuguese (`pt`)
+- Catalan (`ca`)
+- Basque (`eu`)
+
+The selected language is stored in the `lang` query parameter so invite links keep the same UI language for peers.
+
 ## Local Development
 
 ```bash
@@ -55,7 +69,7 @@ npm run dev
 Default dev URL:
 
 ```bash
-http://localhost:5173
+http://localhost:5173/pensando/
 ```
 
 ## Production Build
@@ -64,43 +78,30 @@ http://localhost:5173
 npm run build
 ```
 
-The current tree builds successfully with that command.
+The Vite base path is configured as `/pensando/` for deployment under that subpath.
 
-## Offline or Local-Network Signaling
+## Networking
 
-If browsers cannot reach the public PeerJS cloud broker, start a local PeerServer on the host machine:
-
-```bash
-npm run peer-server
-```
-
-Then, in the setup screen:
-
-1. Enable `Usar PeerServer local`.
-2. Enter the host IP or hostname.
-3. Confirm the port and path.
-4. Share the generated invite URL or QR code.
-
-The shared link now includes the local signaling parameters so peers can connect without manual re-entry.
+- The app uses PeerJS cloud signaling only.
+- There is no local PeerServer configuration in the UI.
+- Invite links only carry `room` and `lang`.
 
 ## Project Structure
 
 ```text
 src/
-  App.tsx         Main UI, board lifecycle, and P2P session flow
+  App.tsx         Main UI, board lifecycle, localization, and P2P session flow
   main.tsx        React bootstrap and toaster setup
   index.css       Global styles
   qrcode.d.ts     Local typing shim for the qrcode package
-  lib/board.ts    Board factories, serialization, and shared utilities
-
-scripts/
-  peer-server.mjs Optional local PeerJS signaling server
+  lib/board.ts    Board factories, serialization, and share URL helpers
+  lib/i18n.ts     Language catalog and localization helpers
 ```
 
 ## Notes
 
-- Networking now starts inside the board lifecycle instead of the setup click handler, which keeps development behavior stable under React StrictMode.
-- The build currently emits a Vite chunk-size warning because the main client bundle is still large. This is informational and does not block the build.
+- Networking starts inside the board lifecycle instead of the setup click handler, which keeps development behavior stable under React StrictMode.
+- The production bundle still emits a chunk-size warning because the main client bundle is large. This does not block the build.
 
 ## Related Docs
 

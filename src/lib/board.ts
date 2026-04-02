@@ -32,12 +32,6 @@ export type LayoutMode = "free" | "grid";
 export type SessionRole = "host" | "peer";
 export type BoardObjectKind = "sticky" | "image" | "zone" | "connector";
 
-export interface LocalSignalingConfig {
-  host: string;
-  port: number;
-  path: string;
-}
-
 export interface CursorPresence {
   peerId: string;
   name: string;
@@ -114,29 +108,14 @@ export function randomCursorColor() {
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
-export function normalizePeerPath(path: string) {
-  const trimmedPath = path.trim();
-  if (!trimmedPath || trimmedPath === "/") {
-    return "/aulaflux";
-  }
-
-  return trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
-}
-
-export function buildShareUrl(roomId: string, signalingConfig?: LocalSignalingConfig | null) {
+export function buildShareUrl(roomId: string, language?: string) {
   const url = new URL(window.location.href);
   url.searchParams.set("room", roomId);
-
-  if (signalingConfig) {
-    url.searchParams.set("peerHost", signalingConfig.host);
-    url.searchParams.set("peerPort", String(signalingConfig.port));
-    url.searchParams.set("peerPath", signalingConfig.path);
+  if (language) {
+    url.searchParams.set("lang", language);
   } else {
-    url.searchParams.delete("peerHost");
-    url.searchParams.delete("peerPort");
-    url.searchParams.delete("peerPath");
+    url.searchParams.delete("lang");
   }
-
   return url.toString();
 }
 

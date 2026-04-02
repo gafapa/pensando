@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import QRCode from "qrcode";
-import { Peer, type PeerJSOption } from "peerjs";
+import { Peer } from "peerjs";
 import { Canvas, Point } from "fabric";
 import { toast } from "sonner";
 import {
@@ -42,7 +42,6 @@ import {
   generateRoomId,
   getObjectById,
   getObjectCenter,
-  normalizePeerPath,
   randomCursorColor,
   randomName,
   readFileAsDataUrl,
@@ -52,19 +51,29 @@ import {
   type BoardMessage,
   type BoardObjectPayload,
   type CursorPresence,
-  type LocalSignalingConfig,
   type LayoutMode,
   type SessionRole
 } from "./lib/board";
+import {
+  LANGUAGE_LABELS,
+  TRANSLATIONS,
+  detectLanguage,
+  interpolate,
+  type AppLanguage
+} from "./lib/i18n";
 
 
 function App() {
   const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
-  const search = searchParams;
+  const initialLanguage = useMemo(
+    () => detectLanguage(searchParams.get("lang") || navigator.language),
+    [searchParams]
+  );
   const [role, setRole] = useState<SessionRole>(() => (searchParams.get("room") ? "peer" : "host"));
   const [displayName, setDisplayName] = useState(() => randomName());
   const [roomId, setRoomId] = useState(() => searchParams.get("room") || generateRoomId());
-  const [status, setStatus] = useState("Listo para iniciar");
+  const [language, setLanguage] = useState<AppLanguage>(initialLanguage);
+  const [status, setStatus] = useState(() => TRANSLATIONS[initialLanguage].readyToStart);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("free");
   const [peerCount, setPeerCount] = useState(0);
   const [selfPeerId, setSelfPeerId] = useState("");
@@ -76,14 +85,6 @@ function App() {
   const [showInvite, setShowInvite] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [vpTransform, setVpTransform] = useState<number[]>([1, 0, 0, 1, 0, 0]);
-  const [useLocalSignaling, setUseLocalSignaling] = useState(() => Boolean(searchParams.get("peerHost")));
-  const [signalingHost, setSignalingHost] = useState(
-    () => searchParams.get("peerHost") || window.location.hostname || "localhost"
-  );
-  const [signalingPort, setSignalingPort] = useState(() => searchParams.get("peerPort") || "9000");
-  const [signalingPath, setSignalingPath] = useState(
-    () => normalizePeerPath(searchParams.get("peerPath") || "/aulaflux")
-  );
 
   const localCursorColorRef = useRef(randomCursorColor());
   const canvasRef = useRef<any>(null);
@@ -123,49 +124,20 @@ function App() {
     selfPeerIdRef.current = selfPeerId;
   }, [selfPeerId]);
 
-  const localSignalingError = useMemo(() => {
-    if (!useLocalSignaling) return "";
-    if (!signalingHost.trim()) {
-      return "Indica el host o la IP del PeerServer local";
+  const messages = useMemo(() => TRANSLATIONS[language], [language]);
+  const joinUrl = useMemo(() => buildShareUrl(roomId, language), [language, roomId]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("lang", language);
+    window.history.replaceState({}, "", url.toString());
+  }, [language]);
+
+  useEffect(() => {
+    if (page === "setup" && !searchParams.get("room")) {
+      setStatus(messages.readyToStart);
     }
-
-    const parsedPort = Number(signalingPort);
-    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
-      return "El puerto debe estar entre 1 y 65535";
-    }
-
-    return "";
-  }, [signalingHost, signalingPort, useLocalSignaling]);
-
-  const localSignalingConfig = useMemo<LocalSignalingConfig | null>(() => {
-    if (!useLocalSignaling || localSignalingError) {
-      return null;
-    }
-
-    return {
-      host: signalingHost.trim(),
-      port: Number(signalingPort),
-      path: normalizePeerPath(signalingPath)
-    };
-  }, [localSignalingError, signalingHost, signalingPath, signalingPort, useLocalSignaling]);
-
-  const peerOptions = useMemo<PeerJSOption | undefined>(() => {
-    if (!localSignalingConfig) {
-      return undefined;
-    }
-
-    return {
-      host: localSignalingConfig.host,
-      port: localSignalingConfig.port,
-      path: localSignalingConfig.path,
-      secure: window.location.protocol === "https:"
-    };
-  }, [localSignalingConfig]);
-
-  const joinUrl = useMemo(
-    () => buildShareUrl(roomId, localSignalingConfig),
-    [localSignalingConfig, roomId]
-  );
+  }, [messages.readyToStart, page, searchParams]);
 
   useEffect(() => {
     let ignore = false;
@@ -343,7 +315,7 @@ function App() {
       await canvas.loadFromJSON(snapshot.canvas);
     } catch (error) {
       console.error("loadFromJSON failed:", error);
-      toast.error("Error al cargar el lienzo desde el snapshot");
+      toast.error(messages.importError);
       return;
     }
     canvas.backgroundColor = "#f8fafc";
@@ -516,7 +488,7 @@ function App() {
     if (message.action === "SYNC_SNAPSHOT") {
       if (!message.payload?.snapshot) return;
       await loadSnapshot(message.payload.snapshot);
-      updateStatus("Lienzo sincronizado");
+      updateStatus(messages.boardSynced);
       return;
     }
 
@@ -575,10 +547,12 @@ function App() {
       if (roleRef.current === "host") {
         hostConnectionsRef.current.set(connection.peer, connection);
         setPeerCount(hostConnectionsRef.current.size);
-        updateStatus(`Sala activa con ${hostConnectionsRef.current.size} peer(s)`);
+        updateStatus(
+          interpolate(messages.activeRoomPeers, { count: hostConnectionsRef.current.size })
+        );
       } else {
         hostConnectionRef.current = connection;
-        updateStatus(`Conectado a ${roomIdRef.current}`);
+        updateStatus(interpolate(messages.connectedToRoom, { roomId: roomIdRef.current }));
         connection.send({
           action: "HELLO",
           sender: displayNameRef.current,
@@ -600,7 +574,7 @@ function App() {
         setPeerCount(hostConnectionsRef.current.size);
       } else {
         hostConnectionRef.current = null;
-        updateStatus("Conexión cerrada");
+        updateStatus(messages.connectionClosed);
       }
 
       setRemoteCursors((current) => {
@@ -611,7 +585,7 @@ function App() {
     });
 
     connection.on("error", (error: Error) => {
-      toast.error(error.message || "Error de conexión P2P");
+      toast.error(error.message || messages.connectionClosed);
     });
   };
 
@@ -632,18 +606,18 @@ function App() {
 
     let peer: Peer;
     if (roleRef.current === "host") {
-      peer = peerOptions ? new Peer(roomIdRef.current, peerOptions) : new Peer(roomIdRef.current);
+      peer = new Peer(roomIdRef.current);
     } else {
-      peer = peerOptions ? new Peer(peerOptions) : new Peer();
+      peer = new Peer();
     }
 
     peerRef.current = peer;
-    updateStatus(roleRef.current === "host" ? "Abriendo sala..." : "Conectando...");
+    updateStatus(roleRef.current === "host" ? messages.openingRoom : messages.connecting);
 
     peer.on("open", (id) => {
       setSelfPeerId(id);
       if (roleRef.current === "host") {
-        updateStatus("Sala lista para compartir");
+        updateStatus(messages.networkReady);
       } else {
         const connection = peer.connect(roomIdRef.current, {
           reliable: true
@@ -657,12 +631,12 @@ function App() {
     });
 
     peer.on("error", (error) => {
-      toast.error(error.message || "No se pudo iniciar la sesión");
-      updateStatus("Error en señalización");
+      toast.error(error.message || messages.signalingError);
+      updateStatus(messages.signalingError);
     });
 
     peer.on("disconnected", () => {
-      updateStatus("Peer desconectado");
+      updateStatus(messages.peerDisconnected);
     });
   };
 
@@ -790,12 +764,12 @@ function App() {
       disconnectNetwork();
       canvas.dispose();
     };
-  }, [page, peerOptions]);
+  }, [messages, page]);
 
   useEffect(() => {
-    if (!search.get("room")) return;
-    updateStatus("Parámetros de invitación detectados");
-  }, []);
+    if (!searchParams.get("room")) return;
+    updateStatus(messages.setupInvitationDetected);
+  }, [messages.setupInvitationDetected, searchParams]);
 
   const selectedSticky = useMemo(() => {
     const canvas = canvasRef.current;
@@ -810,7 +784,7 @@ function App() {
     const payload: BoardObjectPayload = {
       id: crypto.randomUUID(),
       kind: "sticky",
-      text: "Nueva idea",
+      text: messages.stickyDefaultText,
       left: 240 + Math.random() * 360,
       top: 220 + Math.random() * 260,
       width: 220,
@@ -840,7 +814,9 @@ function App() {
       top: 120 + Math.random() * 280,
       width: 520,
       height: 360,
-      name: `Zona ${canvas.getObjects().filter((object: any) => object.kind === "zone").length + 1}`,
+      name: interpolate(messages.zoneName, {
+        index: canvas.getObjects().filter((object: any) => object.kind === "zone").length + 1
+      }),
       updatedAt: Date.now()
     };
     const zone = createZone(payload);
@@ -862,7 +838,7 @@ function App() {
       .getActiveObjects()
       .filter((object: any) => object.kind !== "connector" && object.kind !== "zone");
     if (targets.length !== 2) {
-      toast.info("Selecciona exactamente dos elementos para crear el conector");
+      toast.info(messages.copiedSelectionConnectorError);
       return;
     }
 
@@ -920,11 +896,11 @@ function App() {
     const file = files?.[0];
     if (!canvas || !file) return;
     if (!file.type.startsWith("image/")) {
-      toast.error("Solo se admiten imágenes");
+      toast.error(messages.invalidImageType);
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("La imagen supera el límite de 2MB");
+      toast.error(messages.imageTooLarge);
       return;
     }
     try {
@@ -950,7 +926,7 @@ function App() {
       });
       bumpBoardVersion();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al cargar la imagen");
+      toast.error(messages.imageLoadError);
       console.error("handleImageFiles failed:", error);
     }
   };
@@ -983,7 +959,7 @@ function App() {
       `${APP_NAME.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`,
       createSnapshot(canvas, layoutModeRef.current)
     );
-    toast.success("Clase exportada");
+    toast.success(messages.exportSuccess);
   };
 
   const importBoard = async (file: File) => {
@@ -991,14 +967,14 @@ function App() {
     try {
       text = await readFileAsText(file);
     } catch {
-      toast.error("No se pudo leer el archivo");
+      toast.error(messages.fileReadError);
       return;
     }
     let snapshot: unknown;
     try {
       snapshot = JSON.parse(text);
     } catch {
-      toast.error("El archivo no es un JSON válido");
+      toast.error(messages.invalidJson);
       return;
     }
     if (
@@ -1007,14 +983,14 @@ function App() {
       !("meta" in snapshot) ||
       !("canvas" in snapshot)
     ) {
-      toast.error("El archivo no tiene el formato correcto de AulaFlux");
+      toast.error(messages.invalidSnapshot);
       return;
     }
     try {
       await loadSnapshot(snapshot as any, roleRef.current === "host");
-      toast.success("Clase importada");
+      toast.success(messages.importSuccess);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al importar el lienzo");
+      toast.error(messages.importError);
       console.error("importBoard failed:", error);
     }
   };
@@ -1075,7 +1051,7 @@ function App() {
   };
 
   const clearBoard = () => {
-    if (!window.confirm("¿Borrar todo el lienzo? Esta acción no se puede deshacer.")) return;
+    if (!window.confirm(messages.clearBoardConfirm)) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ids = canvas.getObjects().map((o: any) => o.id).filter(Boolean);
@@ -1153,11 +1129,6 @@ function App() {
   };
 
   const enterBoard = () => {
-    if (localSignalingError) {
-      toast.error(localSignalingError);
-      return;
-    }
-
     setPage("board");
   };
 
@@ -1182,11 +1153,26 @@ function App() {
               <Sparkles className="h-8 w-8" />
             </div>
             <h1 className="text-4xl font-semibold tracking-tight text-slate-900">{APP_NAME}</h1>
-            <p className="mt-2 text-slate-500">Pizarra colaborativa en tiempo real</p>
+            <p className="mt-2 text-slate-500">{messages.appTagline}</p>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-100">
             <div className="grid gap-4">
+              <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                {messages.languageLabel}
+                <select
+                  value={language}
+                  onChange={(event) => setLanguage(event.target.value as AppLanguage)}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                >
+                  {Object.entries(LANGUAGE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
                 {(["host", "peer"] as SessionRole[]).map((item) => (
                   <button
@@ -1199,23 +1185,23 @@ function App() {
                         : "text-slate-500 hover:text-slate-700"
                     }`}
                   >
-                    {item === "host" ? "Profesor" : "Alumno"}
+                    {item === "host" ? messages.roleHost : messages.rolePeer}
                   </button>
                 ))}
               </div>
 
               <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                Tu nombre
+                {messages.yourName}
                 <input
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                   className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                  placeholder="Ej. Profe García"
+                  placeholder={messages.yourNamePlaceholder}
                 />
               </label>
 
               <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                {role === "host" ? "ID de sala" : "ID de sala del profesor"}
+                {role === "host" ? messages.roomIdHost : messages.roomIdPeer}
                 <div className="flex gap-2">
                   <input
                     value={roomId}
@@ -1228,81 +1214,24 @@ function App() {
                       type="button"
                       onClick={() => setRoomId(generateRoomId())}
                       className="rounded-2xl border border-slate-200 bg-slate-50 px-3 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                      title="Generar nuevo ID"
+                      title={messages.generateNewRoomId}
                     >
                       <RefreshCcw className="h-4 w-4" />
                     </button>
                   )}
                 </div>
                 {role === "peer" && (
-                  <p className="text-xs text-slate-400">Pega el ID que te compartió el profesor</p>
+                  <p className="text-xs text-slate-400">{messages.roomIdHelpPeer}</p>
                 )}
               </label>
-
-              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <label className="flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
-                  <span>Usar PeerServer local</span>
-                  <input
-                    type="checkbox"
-                    checked={useLocalSignaling}
-                    onChange={(event) => setUseLocalSignaling(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-cyan-500 focus:ring-cyan-400"
-                  />
-                </label>
-
-                {useLocalSignaling && (
-                  <div className="grid gap-3">
-                    <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                      Host o IP
-                      <input
-                        value={signalingHost}
-                        onChange={(event) => setSignalingHost(event.target.value)}
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                        placeholder="192.168.1.10"
-                      />
-                    </label>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                        Puerto
-                        <input
-                          value={signalingPort}
-                          onChange={(event) => setSignalingPort(event.target.value)}
-                          inputMode="numeric"
-                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                          placeholder="9000"
-                        />
-                      </label>
-
-                      <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                        Path
-                        <input
-                          value={signalingPath}
-                          onChange={(event) => setSignalingPath(event.target.value)}
-                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                          placeholder="/aulaflux"
-                        />
-                      </label>
-                    </div>
-
-                    <p className="text-xs text-slate-500">
-                      Ejecuta <span className="font-mono">npm run peer-server</span> en la maquina
-                      del host y comparte el enlace generado con estos parametros.
-                    </p>
-                    {localSignalingError && (
-                      <p className="text-xs font-medium text-rose-600">{localSignalingError}</p>
-                    )}
-                  </div>
-                )}
-              </div>
 
               <button
                 type="button"
                 onClick={enterBoard}
-                disabled={!displayName.trim() || !roomId.trim() || Boolean(localSignalingError)}
+                disabled={!displayName.trim() || !roomId.trim()}
                 className="mt-1 rounded-2xl bg-cyan-500 px-4 py-3 font-medium text-white shadow-md shadow-cyan-100 transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {role === "host" ? "Crear sala →" : "Unirse a la sala →"}
+                {role === "host" ? messages.createRoom : messages.joinRoom}
               </button>
             </div>
           </div>
@@ -1327,7 +1256,7 @@ function App() {
         {/* Status */}
         <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
           <span className="pulse-dot h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-          {role === "host" ? `${peerCount} conectado(s)` : status}
+          {role === "host" ? interpolate(messages.hostConnectedCount, { count: peerCount }) : status}
         </div>
 
         {/* Users */}
@@ -1335,6 +1264,19 @@ function App() {
           <Users className="h-3.5 w-3.5" />
           {displayName}
         </div>
+
+        <select
+          value={language}
+          onChange={(event) => setLanguage(event.target.value as AppLanguage)}
+          aria-label={messages.languageLabel}
+          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+        >
+          {Object.entries(LANGUAGE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
 
         {/* Invite (host) */}
         {role === "host" && (
@@ -1349,22 +1291,25 @@ function App() {
               }`}
             >
               <QrCode className="h-3.5 w-3.5" />
-              Invitar
+              {messages.invite}
             </button>
             {showInvite && (
               <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl shadow-slate-200">
                 {qrDataUrl && (
-                  <img src={qrDataUrl} alt="QR de invitación" className="mb-3 w-full rounded-xl" />
+                    <img src={qrDataUrl} alt={messages.inviteQrAlt} className="mb-3 w-full rounded-xl" />
                 )}
                 <p className="mb-2 break-all rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600">
                   {joinUrl}
                 </p>
                 <button
                   type="button"
-                  onClick={() => { navigator.clipboard.writeText(joinUrl); toast.success("Enlace copiado"); }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(joinUrl);
+                    toast.success(messages.sharedLinkCopied);
+                  }}
                   className="w-full rounded-xl bg-cyan-500 py-2 text-sm font-medium text-white transition hover:bg-cyan-600"
                 >
-                  Copiar enlace
+                  {messages.copyLink}
                 </button>
               </div>
             )}
@@ -1377,7 +1322,7 @@ function App() {
           className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-500 transition hover:bg-red-50 hover:border-red-200 hover:text-red-600"
         >
           <LogOut className="h-3.5 w-3.5" />
-          Salir
+          {messages.leave}
         </button>
       </header>
 
@@ -1385,8 +1330,8 @@ function App() {
         {/* Left sidebar */}
         <aside className="flex shrink-0 flex-col items-center gap-1 border-r border-slate-200 bg-white px-1.5 py-2 shadow-sm w-14">
           {/* Create */}
-          <SidebarButton icon={StickyNote} label="Sticky" onClick={addStickyNote} />
-          <SidebarButton icon={Grid3X3} label="Zona" onClick={addZoneCard} disabled={role !== "host"} />
+          <SidebarButton icon={StickyNote} label={messages.sticky} onClick={addStickyNote} />
+          <SidebarButton icon={Grid3X3} label={messages.zone} onClick={addZoneCard} disabled={role !== "host"} />
           <label className="flex">
             <input
               ref={reconnectInputRef}
@@ -1395,26 +1340,26 @@ function App() {
               className="hidden"
               onChange={(event) => void handleImageFiles(event.target.files)}
             />
-            <SidebarButton icon={ImagePlus} label="Imagen" onClick={() => reconnectInputRef.current?.click()} />
+            <SidebarButton icon={ImagePlus} label={messages.image} onClick={() => reconnectInputRef.current?.click()} />
           </label>
-          <SidebarButton icon={Link2} label="Conector" onClick={addConnection} />
+          <SidebarButton icon={Link2} label={messages.connector} onClick={addConnection} />
 
           <div className="my-1 h-px w-8 bg-slate-200" />
 
           {/* Edit */}
-          <SidebarButton icon={Copy} label="Duplicar" onClick={duplicateSelection} disabled={!selectedIds.length} />
-          <SidebarButton icon={ChevronsUp} label="Al frente" onClick={bringSelectionToFront} disabled={!selectedIds.length} />
-          <SidebarButton icon={ChevronsDown} label="Al fondo" onClick={sendSelectionToBack} disabled={!selectedIds.length} />
-          <SidebarButton icon={Trash2} label="Borrar" onClick={deleteSelection} disabled={!selectedIds.length} />
+          <SidebarButton icon={Copy} label={messages.duplicate} onClick={duplicateSelection} disabled={!selectedIds.length} />
+          <SidebarButton icon={ChevronsUp} label={messages.bringToFront} onClick={bringSelectionToFront} disabled={!selectedIds.length} />
+          <SidebarButton icon={ChevronsDown} label={messages.sendToBack} onClick={sendSelectionToBack} disabled={!selectedIds.length} />
+          <SidebarButton icon={Trash2} label={messages.delete} onClick={deleteSelection} disabled={!selectedIds.length} />
 
           <div className="my-1 h-px w-8 bg-slate-200" />
 
           {/* View */}
-          <SidebarButton icon={BoxSelect} label="Seleccionar todo" onClick={selectAll} />
-          <SidebarButton icon={Maximize2} label="Ajustar vista" onClick={fitToObjects} />
+          <SidebarButton icon={BoxSelect} label={messages.selectAll} onClick={selectAll} />
+          <SidebarButton icon={Maximize2} label={messages.fitView} onClick={fitToObjects} />
           <SidebarButton
             icon={LayoutPanelTop}
-            label={layoutMode === "free" ? "Modo grid" : "Modo libre"}
+            label={layoutMode === "free" ? messages.gridMode : messages.freeMode}
             onClick={toggleLayout}
             disabled={role !== "host"}
             active={layoutMode === "grid"}
@@ -1423,9 +1368,9 @@ function App() {
           <div className="my-1 h-px w-8 bg-slate-200" />
 
           {/* File */}
-          <SidebarButton icon={Download} label="Exportar" onClick={exportBoard} />
-          <SidebarButton icon={Import} label="Importar" onClick={() => importInputRef.current?.click()} disabled={role !== "host"} />
-          <SidebarButton icon={Eraser} label="Borrar todo" onClick={clearBoard} disabled={role !== "host"} />
+          <SidebarButton icon={Download} label={messages.export} onClick={exportBoard} />
+          <SidebarButton icon={Import} label={messages.import} onClick={() => importInputRef.current?.click()} disabled={role !== "host"} />
+          <SidebarButton icon={Eraser} label={messages.clearBoard} onClick={clearBoard} disabled={role !== "host"} />
 
           {/* Contextual color picker */}
           {selectedSticky && (
@@ -1448,16 +1393,16 @@ function App() {
 
           {/* Zoom */}
           <div className="my-1 h-px w-8 bg-slate-200" />
-          <SidebarButton icon={ZoomIn} label="Acercar" onClick={zoomIn} />
+          <SidebarButton icon={ZoomIn} label={messages.zoomIn} onClick={zoomIn} />
           <button
             type="button"
             onClick={resetZoom}
-            title="Restablecer zoom"
+            title={messages.resetZoom}
             className="flex h-9 w-9 items-center justify-center rounded-xl text-xs font-mono font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
           >
             {Math.round(zoom * 100)}%
           </button>
-          <SidebarButton icon={ZoomOut} label="Alejar" onClick={zoomOut} />
+          <SidebarButton icon={ZoomOut} label={messages.zoomOut} onClick={zoomOut} />
         </aside>
 
         {/* Canvas container */}

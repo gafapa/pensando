@@ -2,27 +2,32 @@
 
 ## Overview
 
-AulaFlux is a single-page React application that renders a Fabric.js canvas and synchronizes board activity through PeerJS data connections. There is no application backend. The only optional server component is a local PeerServer used for signaling when public PeerJS signaling is unavailable.
+AulaFlux is a single-page React application that renders a Fabric.js canvas and synchronizes board activity through PeerJS data connections. There is no application backend and no local signaling configuration in the runtime UI.
 
 ## Runtime Pieces
 
 ### UI shell
 
-- `src/App.tsx` owns the setup flow, room controls, invite UI, and board toolbar.
+- `src/App.tsx` owns the setup flow, room controls, invite UI, language selection, and board toolbar.
 - `src/main.tsx` mounts the React tree and global toaster notifications.
 - `src/index.css` defines the visual system and board background treatments.
 
 ### Board domain
 
-- `src/lib/board.ts` contains board object factories, serialization helpers, snapshot generation, room ID generation, and local signaling URL helpers.
+- `src/lib/board.ts` contains board object factories, serialization helpers, snapshot generation, room ID generation, and share URL helpers.
 - Fabric objects are tagged with custom metadata such as `id`, `kind`, `updatedAt`, `zoneId`, and connector endpoints.
+
+### Localization
+
+- `src/lib/i18n.ts` defines the supported locales and every user-facing message used by the app UI.
+- The selected language is stored in the `lang` query parameter so shared links preserve the interface language.
 
 ### Networking
 
 - PeerJS data channels carry all collaboration messages.
 - The host creates a peer with the room ID.
 - Peers create anonymous peer IDs and connect to the host room ID.
-- `scripts/peer-server.mjs` can expose a local signaling endpoint with basic per-IP connection throttling.
+- Signaling uses the default PeerJS cloud broker only.
 
 ## Board Objects
 
@@ -51,7 +56,7 @@ Important object rules:
 
 ### Peer flow
 
-1. Start PeerJS with either cloud signaling or the configured local PeerServer.
+1. Start PeerJS with a generated peer ID.
 2. Connect to the host room ID.
 3. Send `HELLO`.
 4. Apply the received snapshot.
@@ -61,7 +66,12 @@ Important object rules:
 
 - Networking starts after the board canvas effect mounts and is disposed in the effect cleanup.
 - This keeps the development experience stable under React StrictMode, where mount and cleanup can run more than once.
-- Setup validation blocks entry when local PeerServer configuration is invalid.
+- Localization is React state owned by `App.tsx` and mirrored to the URL with `history.replaceState`.
+
+## Deployment
+
+- Vite is configured with `base: "/pensando/"`.
+- Share URLs are generated from the current browser location, so deployed invite links stay under `/pensando/`.
 
 ## Persistence
 
