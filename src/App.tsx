@@ -131,8 +131,47 @@ function App() {
     selfPeerIdRef.current = selfPeerId;
   }, [selfPeerId]);
 
+  useEffect(() => {
+    refreshCanvasPermissions();
+  }, [role, selfPeerId]);
+
   const messages = useMemo(() => TRANSLATIONS[language], [language]);
   const joinUrl = useMemo(() => buildShareUrl(roomId, language), [language, roomId]);
+  const canCurrentPeerEdit = (object: any) =>
+    roleRef.current === "host" || Boolean(selfPeerIdRef.current && object?.ownerId === selfPeerIdRef.current);
+
+  const ensurePeerCanEdit = () => {
+    if (roleRef.current === "host") return true;
+    if (!selfPeerIdRef.current) {
+      toast.info(messages.waitingForConnection);
+      return false;
+    }
+    return true;
+  };
+
+  const applyObjectPermissions = (object: any) => {
+    if (!object) return;
+    const canEdit = canCurrentPeerEdit(object);
+    object.selectable = canEdit;
+    object.evented = canEdit;
+    if (object.kind === "sticky") {
+      object.editable = canEdit;
+    }
+  };
+
+  const refreshCanvasPermissions = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getObjects().forEach((object: any) => applyObjectPermissions(object));
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+    updateSelection();
+  };
+
+  const buildOwnershipFields = () => ({
+    ownerId: roleRef.current === "host" ? "host" : selfPeerIdRef.current,
+    ownerName: displayNameRef.current
+  });
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -193,6 +232,31 @@ function App() {
     if (hostConnectionRef.current?.open) {
       hostConnectionRef.current.send(message);
     }
+  };
+
+  const canPeerCreateObject = (payload: BoardObjectPayload, peerId: string) => {
+    if (payload.ownerId !== peerId) return false;
+    if (payload.kind === "zone") return false;
+    if (payload.kind === "connector") {
+      const canvas = canvasRef.current;
+      if (!canvas) return false;
+      const source = getObjectById(canvas, payload.sourceId || "");
+      const target = getObjectById(canvas, payload.targetId || "");
+      return Boolean(source && target && source.ownerId === peerId && target.ownerId === peerId);
+    }
+    return true;
+  };
+
+  const canPeerMutateObject = (object: any, peerId: string) => {
+    if (!object || object.ownerId !== peerId) return false;
+    if (object.kind === "connector") {
+      const canvas = canvasRef.current;
+      if (!canvas) return false;
+      const source = getObjectById(canvas, object.sourceId || "");
+      const target = getObjectById(canvas, object.targetId || "");
+      return Boolean(source && target && source.ownerId === peerId && target.ownerId === peerId);
+    }
+    return true;
   };
 
   const syncConnectorsForObject = (objectId?: string) => {
@@ -330,6 +394,7 @@ function App() {
     setLayoutMode(snapshot.meta?.layoutMode || "free");
     layoutModeRef.current = snapshot.meta?.layoutMode || "free";
     syncConnectorsForObject();
+    refreshCanvasPermissions();
     bumpBoardVersion();
 
     if (shouldBroadcast) {
@@ -384,8 +449,11 @@ function App() {
 
       existing.zoneId = payload.zoneId ?? null;
       existing.sortOrder = payload.sortOrder;
+      existing.ownerId = payload.ownerId || "";
+      existing.ownerName = payload.ownerName || "";
       existing.updatedAt = payload.updatedAt;
       existing.setCoords();
+      applyObjectPermissions(existing);
       syncConnectorsForObject(payload.id);
       if (payload.kind === "zone") {
         reflowZone(payload.id);
@@ -430,7 +498,10 @@ function App() {
     object.updatedAt = payload.updatedAt;
     object.zoneId = payload.zoneId ?? null;
     object.sortOrder = payload.sortOrder;
+    object.ownerId = payload.ownerId || "";
+    object.ownerName = payload.ownerName || "";
     object.setCoords();
+    applyObjectPermissions(object);
     if (payload.kind === "connector") {
       syncConnectorsForObject(payload.sourceId);
       syncConnectorsForObject(payload.targetId);
@@ -483,7 +554,7 @@ function App() {
         typeof message.payload.name !== "string" ||
         typeof message.payload.color !== "string"
       ) return;
-      updateStatus(`Sala activa con ${hostConnectionsRef.current.size} peer(s)`);
+      updateStatus(interpolate(messages.activeRoomPeers, { count: hostConnectionsRef.current.size }));
       connection?.send({
         action: "SYNC_SNAPSHOT",
         sender: displayNameRef.current,
@@ -502,6 +573,17 @@ function App() {
     if (message.action === "UPSERT_OBJECT") {
       const obj = message.payload?.object;
       if (!obj || typeof obj.id !== "string" || typeof obj.kind !== "string") return;
+      if (roleRef.current === "host" && connection?.peer) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const existing = getObjectById(canvas, obj.id);
+        const allowed = existing
+          ? canPeerMutateObject(existing, connection.peer)
+          : canPeerCreateObject(obj, connection.peer);
+        if (!allowed) {
+          return;
+        }
+      }
       await applyObjectPayload(obj);
       if (roleRef.current === "host") {
         sendMessage(message, connection?.peer);
@@ -512,6 +594,14 @@ function App() {
     if (message.action === "REMOVE_OBJECT") {
       const { id, updatedAt } = message.payload ?? ({} as any);
       if (typeof id !== "string") return;
+      if (roleRef.current === "host" && connection?.peer) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const existing = getObjectById(canvas, id);
+        if (!canPeerMutateObject(existing, connection.peer)) {
+          return;
+        }
+      }
       removeObjectById(id, typeof updatedAt === "number" ? updatedAt : Date.now(), false);
       if (roleRef.current === "host") {
         sendMessage(message, connection?.peer);
@@ -520,6 +610,7 @@ function App() {
     }
 
     if (message.action === "UPDATE_META") {
+      if (roleRef.current === "host" && connection?.peer) return;
       const mode = message.payload?.layoutMode;
       if (mode !== "free" && mode !== "grid") return;
       setLayoutMode(mode);
@@ -671,14 +762,26 @@ function App() {
     canvas.on("selection:cleared", updateSelection);
     canvas.on("object:moving", ({ target }: any) => {
       if (!target) return;
+      if (!canCurrentPeerEdit(target)) {
+        canvas.requestRenderAll();
+        return;
+      }
       syncConnectorsForObject(target.id);
     });
     canvas.on("object:scaling", ({ target }: any) => {
       if (!target) return;
+      if (!canCurrentPeerEdit(target)) {
+        canvas.requestRenderAll();
+        return;
+      }
       syncConnectorsForObject(target.id);
     });
     canvas.on("object:modified", ({ target }: any) => {
       if (!target) return;
+      if (!canCurrentPeerEdit(target)) {
+        canvas.requestRenderAll();
+        return;
+      }
       target.updatedAt = Date.now();
       updateZoneMembership(target, false);
       syncConnectorsForObject(target.id);
@@ -691,6 +794,10 @@ function App() {
     });
     canvas.on("text:changed", ({ target }: any) => {
       if (!target) return;
+      if (!canCurrentPeerEdit(target)) {
+        canvas.requestRenderAll();
+        return;
+      }
       target.updatedAt = Date.now();
       sendMessage({
         action: "UPSERT_OBJECT",
@@ -788,6 +895,7 @@ function App() {
   const addStickyNote = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (!ensurePeerCanEdit()) return;
     const payload: BoardObjectPayload = {
       id: crypto.randomUUID(),
       kind: "sticky",
@@ -796,10 +904,12 @@ function App() {
       top: 220 + Math.random() * 260,
       width: 220,
       backgroundColor: STICKY_COLORS[Math.floor(Math.random() * STICKY_COLORS.length)],
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      ...buildOwnershipFields()
     };
     const sticky = createSticky(payload);
     canvas.add(sticky);
+    applyObjectPermissions(sticky);
     canvas.setActiveObject(sticky);
     canvas.requestRenderAll();
     sendMessage({
@@ -814,6 +924,7 @@ function App() {
   const addZoneCard = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (!ensurePeerCanEdit()) return;
     const payload: BoardObjectPayload = {
       id: crypto.randomUUID(),
       kind: "zone",
@@ -824,10 +935,12 @@ function App() {
       name: interpolate(messages.zoneName, {
         index: canvas.getObjects().filter((object: any) => object.kind === "zone").length + 1
       }),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      ...buildOwnershipFields()
     };
     const zone = createZone(payload);
     canvas.add(zone);
+    applyObjectPermissions(zone);
     canvas.setActiveObject(zone);
     canvas.requestRenderAll();
     sendMessage({
@@ -841,9 +954,15 @@ function App() {
   const addConnection = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (!ensurePeerCanEdit()) return;
     const targets = canvas
       .getActiveObjects()
-      .filter((object: any) => object.kind !== "connector" && object.kind !== "zone");
+      .filter(
+        (object: any) =>
+          object.kind !== "connector" &&
+          object.kind !== "zone" &&
+          canCurrentPeerEdit(object)
+      );
     if (targets.length !== 2) {
       toast.info(messages.copiedSelectionConnectorError);
       return;
@@ -854,7 +973,8 @@ function App() {
       kind: "connector",
       sourceId: targets[0].id,
       targetId: targets[1].id,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      ...buildOwnershipFields()
     };
     const connector = createConnector(
       payload,
@@ -862,6 +982,7 @@ function App() {
       getObjectCenter(targets[1])
     );
     canvas.add(connector);
+    applyObjectPermissions(connector);
     canvas.sendObjectToBack(connector);
     canvas.requestRenderAll();
     sendMessage({
@@ -875,7 +996,7 @@ function App() {
   const deleteSelection = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const targets = canvas.getActiveObjects();
+    const targets = canvas.getActiveObjects().filter((target: any) => canCurrentPeerEdit(target));
     if (!targets.length) return;
     targets.forEach((target: any) => removeObjectById(target.id, Date.now(), true));
     canvas.discardActiveObject();
@@ -885,6 +1006,10 @@ function App() {
 
   const updateStickyColor = (color: string) => {
     if (!selectedSticky) return;
+    if (!canCurrentPeerEdit(selectedSticky)) {
+      toast.info(messages.editOwnObjectsOnly);
+      return;
+    }
     selectedSticky.set({
       backgroundColor: color
     });
@@ -902,6 +1027,7 @@ function App() {
     const canvas = canvasRef.current;
     const file = files?.[0];
     if (!canvas || !file) return;
+    if (!ensurePeerCanEdit()) return;
     if (!file.type.startsWith("image/")) {
       toast.error(messages.invalidImageType);
       return;
@@ -920,10 +1046,12 @@ function App() {
         top: 260 + Math.random() * 220,
         scaleX: 0.7,
         scaleY: 0.7,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        ...buildOwnershipFields()
       };
       const image = await createImage(payload);
       canvas.add(image);
+      applyObjectPermissions(image);
       canvas.setActiveObject(image);
       canvas.requestRenderAll();
       sendMessage({
@@ -1005,9 +1133,10 @@ function App() {
   const duplicateSelection = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (!ensurePeerCanEdit()) return;
     const targets = canvas
       .getActiveObjects()
-      .filter((o: any) => o.kind === "sticky" || o.kind === "zone");
+      .filter((o: any) => (o.kind === "sticky" || o.kind === "zone") && canCurrentPeerEdit(o));
     if (!targets.length) return;
     targets.forEach((target: any) => {
       const serialized = serializeObject(target);
@@ -1016,10 +1145,12 @@ function App() {
         id: crypto.randomUUID(),
         left: (serialized.left || 0) + 30,
         top: (serialized.top || 0) + 30,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        ...buildOwnershipFields()
       };
       const obj = payload.kind === "sticky" ? createSticky(payload) : createZone(payload);
       canvas.add(obj);
+      applyObjectPermissions(obj);
       sendMessage({
         action: "UPSERT_OBJECT",
         sender: displayNameRef.current,
@@ -1033,7 +1164,9 @@ function App() {
   const selectAll = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const all = canvas.getObjects().filter((o: any) => o.kind !== "connector");
+    const all = canvas
+      .getObjects()
+      .filter((o: any) => o.kind !== "connector" && canCurrentPeerEdit(o));
     if (!all.length) return;
     canvas.setActiveObjects(all as any[]);
     canvas.requestRenderAll();
@@ -1043,7 +1176,10 @@ function App() {
   const bringSelectionToFront = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.getActiveObjects().forEach((obj: any) => canvas.bringObjectToFront(obj));
+    canvas
+      .getActiveObjects()
+      .filter((obj: any) => canCurrentPeerEdit(obj))
+      .forEach((obj: any) => canvas.bringObjectToFront(obj));
     canvas.requestRenderAll();
   };
 
@@ -1052,7 +1188,7 @@ function App() {
     if (!canvas) return;
     canvas
       .getActiveObjects()
-      .filter((obj: any) => obj.kind !== "connector")
+      .filter((obj: any) => obj.kind !== "connector" && canCurrentPeerEdit(obj))
       .forEach((obj: any) => canvas.sendObjectToBack(obj));
     canvas.requestRenderAll();
   };

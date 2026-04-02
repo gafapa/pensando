@@ -25,7 +25,9 @@ export const SERIALIZABLE_PROPS = [
   "targetId",
   "zoneId",
   "sortOrder",
-  "name"
+  "name",
+  "ownerId",
+  "ownerName"
 ];
 
 export type LayoutMode = "free" | "grid";
@@ -61,6 +63,8 @@ export interface BoardObjectPayload {
   zoneId?: string | null;
   sortOrder?: number;
   name?: string;
+  ownerId?: string;
+  ownerName?: string;
 }
 
 export interface BoardSnapshot {
@@ -162,6 +166,8 @@ export function makeBaseObject<T extends { set: (props: any) => void }>(
     zoneId: payload.zoneId ?? null,
     sortOrder: payload.sortOrder,
     name: payload.name ?? "",
+    ownerId: payload.ownerId ?? "",
+    ownerName: payload.ownerName ?? "",
     transparentCorners: false,
     cornerStyle: "circle",
     borderColor: "#67e8f9",
@@ -309,7 +315,9 @@ export function serializeObject(object: any): BoardObjectPayload {
     stroke: object.stroke,
     zoneId: object.zoneId ?? null,
     sortOrder: object.sortOrder,
-    name: object.name || ""
+    name: object.name || "",
+    ownerId: object.ownerId || "",
+    ownerName: object.ownerName || ""
   };
 
   if (object.kind === "sticky") {

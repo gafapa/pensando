@@ -67,6 +67,8 @@ export interface TranslationMessages {
   zoneName: string;
   hostConnectedCount: string;
   sharedLinkCopied: string;
+  waitingForConnection: string;
+  editOwnObjectsOnly: string;
 }
 
 export const LANGUAGE_LABELS: Record<AppLanguage, string> = {
@@ -145,7 +147,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "Nueva idea",
     zoneName: "Zona {index}",
     hostConnectedCount: "{count} conectado(s)",
-    sharedLinkCopied: "Enlace copiado"
+    sharedLinkCopied: "Enlace copiado",
+    waitingForConnection: "Espera a que la sesión termine de conectarse",
+    editOwnObjectsOnly: "El profesor puede editar todo; cada alumno solo puede editar sus propios elementos"
   },
   gl: {
     languageName: "Galego",
@@ -211,7 +215,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "Nova idea",
     zoneName: "Zona {index}",
     hostConnectedCount: "{count} conectado(s)",
-    sharedLinkCopied: "Ligazón copiada"
+    sharedLinkCopied: "Ligazón copiada",
+    waitingForConnection: "Agarda a que a sesión remate de conectar",
+    editOwnObjectsOnly: "O profesorado pode editar todo; cada alumno só pode editar os seus propios elementos"
   },
   en: {
     languageName: "English",
@@ -277,7 +283,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "New idea",
     zoneName: "Zone {index}",
     hostConnectedCount: "{count} connected",
-    sharedLinkCopied: "Link copied"
+    sharedLinkCopied: "Link copied",
+    waitingForConnection: "Wait until the session finishes connecting",
+    editOwnObjectsOnly: "The teacher can edit everything; each student can edit only their own elements"
   },
   fr: {
     languageName: "Français",
@@ -343,7 +351,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "Nouvelle idée",
     zoneName: "Zone {index}",
     hostConnectedCount: "{count} connecté(s)",
-    sharedLinkCopied: "Lien copié"
+    sharedLinkCopied: "Lien copié",
+    waitingForConnection: "Attendez que la session termine sa connexion",
+    editOwnObjectsOnly: "L'enseignant peut tout modifier ; chaque élève ne peut modifier que ses propres éléments"
   },
   de: {
     languageName: "Deutsch",
@@ -409,7 +419,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "Neue Idee",
     zoneName: "Zone {index}",
     hostConnectedCount: "{count} verbunden",
-    sharedLinkCopied: "Link kopiert"
+    sharedLinkCopied: "Link kopiert",
+    waitingForConnection: "Warte, bis die Sitzung vollständig verbunden ist",
+    editOwnObjectsOnly: "Die Lehrkraft kann alles bearbeiten; Lernende nur ihre eigenen Elemente"
   },
   pt: {
     languageName: "Português",
@@ -475,7 +487,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "Nova ideia",
     zoneName: "Zona {index}",
     hostConnectedCount: "{count} ligado(s)",
-    sharedLinkCopied: "Ligação copiada"
+    sharedLinkCopied: "Ligação copiada",
+    waitingForConnection: "Espera até a sessão terminar a ligação",
+    editOwnObjectsOnly: "O professor pode editar tudo; cada aluno só pode editar os seus próprios elementos"
   },
   ca: {
     languageName: "Català",
@@ -541,7 +555,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "Nova idea",
     zoneName: "Zona {index}",
     hostConnectedCount: "{count} connectat(s)",
-    sharedLinkCopied: "Enllaç copiat"
+    sharedLinkCopied: "Enllaç copiat",
+    waitingForConnection: "Espera que la sessió acabi de connectar",
+    editOwnObjectsOnly: "El professor pot editar-ho tot; cada alumne només pot editar els seus propis elements"
   },
   eu: {
     languageName: "Euskara",
@@ -607,7 +623,9 @@ export const TRANSLATIONS: Record<AppLanguage, TranslationMessages> = {
     stickyDefaultText: "Ideia berria",
     zoneName: "Zona {index}",
     hostConnectedCount: "{count} konektatuta",
-    sharedLinkCopied: "Esteka kopiatuta"
+    sharedLinkCopied: "Esteka kopiatuta",
+    waitingForConnection: "Itxaron saioa konektatzen amaitu arte",
+    editOwnObjectsOnly: "Irakasleak dena edita dezake; ikasle bakoitzak bere elementuak bakarrik edita ditzake"
   }
 };
 

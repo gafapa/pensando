@@ -86,6 +86,8 @@ The Vite base path is configured as `/pensando/` for deployment under that subpa
 - There is no local PeerServer configuration in the UI.
 - Invite links only carry `room` and `lang`.
 - An invited board can only be opened as a peer, so each board keeps a single teacher/host session.
+- The teacher can edit every object on the board.
+- Each student can create and edit only the objects they own.
 
 ## Project Structure
 
