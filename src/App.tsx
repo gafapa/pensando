@@ -1141,7 +1141,22 @@ function App() {
 
   if (page === "setup") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-8 text-slate-900">
+      <div className="relative min-h-screen flex items-center justify-center bg-slate-50 px-4 py-8 text-slate-900">
+        <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+          <select
+            value={language}
+            onChange={(event) => setLanguage(event.target.value as AppLanguage)}
+            aria-label={messages.languageLabel}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+          >
+            {Object.entries(LANGUAGE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1158,21 +1173,6 @@ function App() {
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-100">
             <div className="grid gap-4">
-              <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                {messages.languageLabel}
-                <select
-                  value={language}
-                  onChange={(event) => setLanguage(event.target.value as AppLanguage)}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                >
-                  {Object.entries(LANGUAGE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
               <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
                 {(["host", "peer"] as SessionRole[]).map((item) => (
                   <button
