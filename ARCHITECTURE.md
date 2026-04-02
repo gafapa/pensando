@@ -43,7 +43,7 @@ Supported object kinds:
 
 Important object rules:
 
-- Connectors depend on `sourceId` and `targetId` and are recalculated whenever linked objects move or scale.
+- Connectors depend on `sourceId` and `targetId` and fully recalculate their Fabric path geometry whenever linked objects move or scale.
 - Zones can own sticky notes and images through `zoneId`.
 - Grid mode reflows zone members into a deterministic layout.
 - `updatedAt` is used as a last-write-wins guard when applying remote updates.

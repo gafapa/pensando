@@ -30,7 +30,6 @@ import { toast } from "sonner";
 import {
   APP_NAME,
   STICKY_COLORS,
-  buildBezierPath,
   buildShareUrl,
   canSnapToZone,
   createConnector,
@@ -47,7 +46,7 @@ import {
   readFileAsDataUrl,
   readFileAsText,
   serializeObject,
-  util,
+  syncConnectorGeometry,
   type BoardMessage,
   type BoardObjectPayload,
   type CursorPresence,
@@ -273,18 +272,15 @@ function App() {
         return;
       }
 
-      const source = getObjectById(canvas, object.sourceId);
-      const target = getObjectById(canvas, object.targetId);
-      if (!source || !target) return;
-      const start = getObjectCenter(source);
-      const end = getObjectCenter(target);
-      const newPathStr = buildBezierPath(start, end);
-      object.path = util.parsePath(newPathStr);
-      object.dirty = true;
-      object.setCoords();
-    });
-    canvas.requestRenderAll();
-  };
+        const source = getObjectById(canvas, object.sourceId);
+        const target = getObjectById(canvas, object.targetId);
+        if (!source || !target) return;
+        const start = getObjectCenter(source);
+        const end = getObjectCenter(target);
+        syncConnectorGeometry(object, start, end);
+      });
+      canvas.requestRenderAll();
+    };
 
   const reflowZone = (zoneId: string) => {
     const canvas = canvasRef.current;

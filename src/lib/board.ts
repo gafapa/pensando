@@ -259,13 +259,34 @@ export function buildBezierPath(
   return `M ${source.x} ${source.y} C ${cx1} ${cy1} ${cx2} ${cy2} ${target.x} ${target.y} M ${ax1} ${ay1} L ${target.x} ${target.y} L ${ax2} ${ay2}`;
 }
 
+export function syncConnectorGeometry(
+  connector: any,
+  source: { x: number; y: number },
+  target: { x: number; y: number }
+) {
+  const nextGeometry = new Path(buildBezierPath(source, target));
+  connector.set({
+    path: nextGeometry.path,
+    left: nextGeometry.left,
+    top: nextGeometry.top,
+    width: nextGeometry.width,
+    height: nextGeometry.height,
+    pathOffset: nextGeometry.pathOffset,
+    scaleX: 1,
+    scaleY: 1,
+    angle: 0
+  });
+  connector.dirty = true;
+  connector.setCoords();
+  return connector;
+}
+
 export function createConnector(
   payload: BoardObjectPayload,
   source: { x: number; y: number },
   target: { x: number; y: number }
 ) {
-  const pathStr = buildBezierPath(source, target);
-  const path = new Path(pathStr, {
+  const path = new Path(buildBezierPath(source, target), {
     stroke: payload.stroke || "#7dd3fc",
     strokeWidth: 2.5,
     fill: "transparent",
@@ -275,7 +296,7 @@ export function createConnector(
     hoverCursor: "pointer",
     objectCaching: false
   });
-  return makeBaseObject(path, payload);
+  return syncConnectorGeometry(makeBaseObject(path, payload), source, target);
 }
 
 export { util };
