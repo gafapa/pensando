@@ -1,16 +1,14 @@
 import {
   FabricImage,
-  Line,
+  Path,
   Rect,
   Shadow,
-  Textbox
+  Textbox,
+  util
 } from "fabric";
-import type { PeerJSOption } from "peerjs";
-
 export const APP_NAME = "AulaFlux";
 export const BOARD_WIDTH = 3200;
 export const BOARD_HEIGHT = 2000;
-export const DEFAULT_SIGNAL_PATH = "/aulaflux";
 export const STICKY_COLORS = [
   "#FFE08A",
   "#FDBA74",
@@ -34,12 +32,10 @@ export type LayoutMode = "free" | "grid";
 export type SessionRole = "host" | "peer";
 export type BoardObjectKind = "sticky" | "image" | "zone" | "connector";
 
-export interface SignalConfig {
-  useCustom: boolean;
+export interface LocalSignalingConfig {
   host: string;
   port: number;
   path: string;
-  secure: boolean;
 }
 
 export interface CursorPresence {
@@ -118,37 +114,29 @@ export function randomCursorColor() {
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
-export function buildPeerOptions(config: SignalConfig): PeerJSOption | undefined {
-  if (!config.useCustom || !config.host.trim()) {
-    return undefined;
+export function normalizePeerPath(path: string) {
+  const trimmedPath = path.trim();
+  if (!trimmedPath || trimmedPath === "/") {
+    return "/aulaflux";
   }
 
-  return {
-    host: config.host.trim(),
-    port: Number(config.port) || 9000,
-    path: config.path || DEFAULT_SIGNAL_PATH,
-    secure: Boolean(config.secure)
-  };
+  return trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
 }
 
-export function buildShareUrl(roomId: string, config: SignalConfig) {
+export function buildShareUrl(roomId: string, signalingConfig?: LocalSignalingConfig | null) {
   const url = new URL(window.location.href);
   url.searchParams.set("room", roomId);
-  if (config.useCustom && config.host.trim()) {
-    url.searchParams.set("signalHost", config.host.trim());
-    url.searchParams.set("signalPort", String(config.port || 9000));
-    url.searchParams.set("signalPath", config.path || DEFAULT_SIGNAL_PATH);
-    if (config.secure) {
-      url.searchParams.set("signalSecure", "1");
-    } else {
-      url.searchParams.delete("signalSecure");
-    }
+
+  if (signalingConfig) {
+    url.searchParams.set("peerHost", signalingConfig.host);
+    url.searchParams.set("peerPort", String(signalingConfig.port));
+    url.searchParams.set("peerPath", signalingConfig.path);
   } else {
-    url.searchParams.delete("signalHost");
-    url.searchParams.delete("signalPort");
-    url.searchParams.delete("signalPath");
-    url.searchParams.delete("signalSecure");
+    url.searchParams.delete("peerHost");
+    url.searchParams.delete("peerPort");
+    url.searchParams.delete("peerPath");
   }
+
   return url.toString();
 }
 
@@ -244,7 +232,14 @@ export function createZone(payload: BoardObjectPayload) {
 }
 
 export async function createImage(payload: BoardObjectPayload) {
-  const image = await FabricImage.fromURL(payload.src || "");
+  if (!payload.src) throw new Error("Se requiere una URL de imagen");
+  let image: FabricImage;
+  try {
+    image = await FabricImage.fromURL(payload.src);
+  } catch {
+    throw new Error("No se pudo cargar la imagen");
+  }
+  if (!image) throw new Error("No se pudo cargar la imagen");
   image.set({
     left: payload.left ?? 360,
     top: payload.top ?? 360,
@@ -260,23 +255,45 @@ export async function createImage(payload: BoardObjectPayload) {
   return makeBaseObject(image, payload);
 }
 
+export function buildBezierPath(
+  source: { x: number; y: number },
+  target: { x: number; y: number }
+): string {
+  const dx = target.x - source.x;
+  const cx1 = source.x + dx * 0.5;
+  const cy1 = source.y;
+  const cx2 = target.x - dx * 0.5;
+  const cy2 = target.y;
+  const angle = Math.atan2(target.y - cy2, target.x - cx2);
+  const arrowLen = 14;
+  const arrowSpread = 0.42;
+  const ax1 = target.x - arrowLen * Math.cos(angle - arrowSpread);
+  const ay1 = target.y - arrowLen * Math.sin(angle - arrowSpread);
+  const ax2 = target.x - arrowLen * Math.cos(angle + arrowSpread);
+  const ay2 = target.y - arrowLen * Math.sin(angle + arrowSpread);
+  return `M ${source.x} ${source.y} C ${cx1} ${cy1} ${cx2} ${cy2} ${target.x} ${target.y} M ${ax1} ${ay1} L ${target.x} ${target.y} L ${ax2} ${ay2}`;
+}
+
 export function createConnector(
   payload: BoardObjectPayload,
   source: { x: number; y: number },
   target: { x: number; y: number }
 ) {
-  const line = new Line([source.x, source.y, target.x, target.y], {
+  const pathStr = buildBezierPath(source, target);
+  const path = new Path(pathStr, {
     stroke: payload.stroke || "#7dd3fc",
-    strokeWidth: 3,
+    strokeWidth: 2.5,
+    fill: "transparent",
     selectable: true,
     evented: true,
-    lockMovementX: true,
-    lockMovementY: true,
     hasControls: false,
-    hoverCursor: "pointer"
+    hoverCursor: "pointer",
+    objectCaching: false
   });
-  return makeBaseObject(line, payload);
+  return makeBaseObject(path, payload);
 }
+
+export { util };
 
 export function isCanvasObjectEligible(object: any) {
   return object && object.kind && object.kind !== "connector";

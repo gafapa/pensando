@@ -1,66 +1,42 @@
 # AulaFlux
 
-AulaFlux es una pizarra colaborativa local-first para clases, workshops y dinámicas de grupo. Está pensada para montarse rápido, funcionar sin backend de aplicación y permitir sesiones en tiempo real entre profesor y alumnos usando red local o internet.
+AulaFlux is a local-first collaborative whiteboard for classrooms, workshops, and group activities. It is designed to start quickly, run without an application backend, and support real-time sessions between a host and multiple peers over a local network or the internet.
 
-## Qué es
+## Features
 
-El proyecto implementa un tablero visual tipo Miro/Padlet con dos modos de trabajo:
+- Shareable room IDs
+- Join link with QR code
+- Editable sticky notes
+- Visual zones with optional grid reflow
+- Connectors between board objects
+- Drag and drop image upload for files under 2 MB
+- Remote cursors with participant names
+- Session export and import through Fabric JSON snapshots
+- Optional local PeerServer support for isolated classroom networks
 
-- `Free-form`: libertad total para mover elementos por el lienzo.
-- `Grid-snap`: zonas tipo columnas o contenedores donde las tarjetas e imágenes se ordenan automáticamente.
+## Stack
 
-La sesión sigue un modelo `Host / Peer`:
+- React 19
+- TypeScript
+- Vite 8
+- Tailwind CSS 4
+- Fabric.js 7
+- PeerJS
+- `peer` for the optional local signaling server
+- `qrcode` for invite QR generation
+- `motion`
+- `lucide-react`
+- `sonner`
+- `@fontsource-variable/space-grotesk`
 
-- El `Host` crea la sala, mantiene el estado principal del lienzo y redistribuye cambios.
-- Los `Peers` se conectan a la sala, editan el tablero y reciben actualizaciones en tiempo real.
+## Session Model
 
-## MVP incluido
+The application uses a host-authoritative model.
 
-- Creación de sala con ID compartible
-- Enlace de invitación con QR
-- Sticky notes editables
-- Zonas visuales con auto-layout
-- Conectores dinámicos entre objetos
-- Drag & drop de imágenes pequeñas `< 2MB`
-- Cursores remotos con nombre
-- Exportación e importación de sesiones con `canvas.toJSON()`
-- PeerServer local opcional para redes totalmente offline
+- The host owns the room ID, accepts peer connections, sends the initial snapshot, and rebroadcasts updates.
+- Each peer connects to the host room, sends local edits, and receives object, metadata, and cursor updates.
 
-## Stack final
-
-Se mantuvo la idea original del documento, ajustando algunas piezas para ganar velocidad de desarrollo y una UI más actual:
-
-- `React 19`
-- `TypeScript`
-- `Vite 8`
-- `Tailwind CSS 4`
-- `Fabric.js 7` para el lienzo y los objetos serializables
-- `PeerJS` para conectividad P2P
-- `peer` para levantar un `PeerServer` local opcional
-- `qrcode` para generar el QR de entrada a la sala
-- `motion` para animaciones
-- `lucide-react` para iconografía
-- `sonner` para feedback visual y notificaciones
-- `@fontsource-variable/space-grotesk` para una tipografía más cuidada
-
-## Arquitectura rápida
-
-### Host
-
-- Genera el ID de sala
-- Inicializa la conexión P2P
-- Sincroniza snapshots completos cuando entra un nuevo peer
-- Retransmite mensajes de actualización al resto de clientes
-
-### Peer
-
-- Se conecta al ID del host
-- Envía cambios locales
-- Recibe objetos, cursores y cambios de layout
-
-### Protocolo de mensajes
-
-La app usa mensajes JSON con acciones como:
+Supported message types:
 
 - `HELLO`
 - `SYNC_SNAPSHOT`
@@ -69,100 +45,64 @@ La app usa mensajes JSON con acciones como:
 - `UPDATE_META`
 - `CURSOR`
 
-## Experiencia de uso
-
-### Profesor / Host
-
-1. Abre la app.
-2. Elige rol `Profesor / Host`.
-3. Inicia la sala.
-4. Comparte el QR o el enlace.
-5. Crea notas, zonas, conexiones y exporta la sesión al terminar.
-
-### Alumno / Peer
-
-1. Abre el enlace compartido.
-2. Entra con el rol `Alumno / Peer`.
-3. Se conecta al host.
-4. Colabora sobre el tablero en tiempo real.
-
-## Desarrollo local
+## Local Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-La aplicación se levanta con Vite y queda accesible por defecto en:
+Default dev URL:
 
 ```bash
 http://localhost:5173
 ```
 
-## Build de producción
+## Production Build
 
 ```bash
 npm run build
 ```
 
-## Red local sin internet
+The current tree builds successfully with that command.
 
-Si el aula está en una red totalmente aislada y los navegadores no pueden usar señalización pública, ejecuta un PeerServer local en la máquina del profesor:
+## Offline or Local-Network Signaling
+
+If browsers cannot reach the public PeerJS cloud broker, start a local PeerServer on the host machine:
 
 ```bash
 npm run peer-server
 ```
 
-Después, en la interfaz:
+Then, in the setup screen:
 
-- activa `Señalización local`
-- indica la IP o hostname del profesor
-- revisa puerto y path
-- comparte el enlace generado con esos parámetros
+1. Enable `Usar PeerServer local`.
+2. Enter the host IP or hostname.
+3. Confirm the port and path.
+4. Share the generated invite URL or QR code.
 
-## Estructura del proyecto
+The shared link now includes the local signaling parameters so peers can connect without manual re-entry.
+
+## Project Structure
 
 ```text
 src/
-  App.tsx           UI principal y flujo de sesión
-  main.tsx          bootstrap de React
-  index.css         estilos globales y look visual
-  lib/board.ts      utilidades de canvas, mensajes y serialización
+  App.tsx         Main UI, board lifecycle, and P2P session flow
+  main.tsx        React bootstrap and toaster setup
+  index.css       Global styles
+  qrcode.d.ts     Local typing shim for the qrcode package
+  lib/board.ts    Board factories, serialization, and shared utilities
 
 scripts/
-  peer-server.mjs   servidor local opcional de PeerJS
+  peer-server.mjs Optional local PeerJS signaling server
 ```
 
-## Decisiones de implementación
+## Notes
 
-- Se priorizó un MVP estable y demostrable.
-- Se mantuvo la sincronización con un modelo `host-authoritative`, que simplifica conflictos para una primera versión.
-- `Yjs` quedó fuera por ahora para reducir complejidad inicial; sería la siguiente mejora natural si se quiere edición concurrente más fina.
-- Se reemplazó `qrious` por `qrcode`, que hoy tiene mejor mantenimiento práctico para este caso.
+- Networking now starts inside the board lifecycle instead of the setup click handler, which keeps development behavior stable under React StrictMode.
+- The build currently emits a Vite chunk-size warning because the main client bundle is still large. This is informational and does not block the build.
 
-## Próximas mejoras recomendadas
+## Related Docs
 
-- Añadir `Yjs` para sincronización CRDT real
-- Selección múltiple más avanzada
-- Persistencia automática local
-- Permisos por rol
-- Minimap del lienzo
-- Comentarios o votaciones para dinámicas de clase
-- Code splitting para reducir el bundle de `Fabric`
-
-## Scripts disponibles
-
-```bash
-npm run dev
-npm run build
-npm run preview
-npm run peer-server
-```
-
-## Estado actual
-
-La app compila correctamente en producción con:
-
-```bash
-npm run build
-```
+- [ARCHITECTURE.md](/D:/ProyectosIA/pensando/ARCHITECTURE.md)
+- [RULES.md](/D:/ProyectosIA/pensando/RULES.md)
